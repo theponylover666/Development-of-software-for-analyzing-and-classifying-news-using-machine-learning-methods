@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class DataProcessor:
-    """Класс для обработки и анализа данных, полученных с API."""
+    """Класс для обработки и анализа данных."""
 
     @staticmethod
     def save_to_csv(data: pd.DataFrame, filename: str):
@@ -16,76 +16,123 @@ class DataProcessor:
             print("Нет данных для сохранения.")
 
     @staticmethod
-    def analyze_prices(data: pd.DataFrame):
+    def analyze_data(data: pd.DataFrame, ticker: str):
         """
-        Анализ цен акций: средняя, минимальная, максимальная цена и процентное изменение.
-        """
-        print("\n### Анализ цен ###")
-        print(data[["PREVPRICE", "PREVWAPRICE"]].describe())
-
-        # Процентное изменение цены
-        data["PRICE_CHANGE_%"] = (
-            (data["PREVPRICE"] - data["PREVWAPRICE"]) / data["PREVWAPRICE"] * 100
-        )
-        print("\nПроцентное изменение цены:")
-        print(data[["SECID", "PRICE_CHANGE_%"]])
-
-    @staticmethod
-    def analyze_liquidity(data: pd.DataFrame):
-        """
-        Анализ ликвидности: LOTSIZE и ISSUESIZE.
-        """
-        print("\n### Анализ ликвидности ###")
-        print("Размер лота (LOTSIZE):")
-        print(data[["SECID", "LOTSIZE"]].describe())
-        print("\nОбъём выпуска акций (ISSUESIZE):")
-        print(data[["SECID", "ISSUESIZE"]].describe())
-
-    @staticmethod
-    def classify_parameters(data: pd.DataFrame):
-        """
-        Классификация компаний по параметрам: LISTLEVEL, CURRENCYID.
-        """
-        print("\n### Классификация по параметрам ###")
-        print("Уровень листинга (LISTLEVEL):")
-        print(data.groupby("LISTLEVEL")["SECID"].count())
-        print("\nВалюта (CURRENCYID):")
-        print(data.groupby("CURRENCYID")["SECID"].count())
-
-    @staticmethod
-    def compare_companies(data: pd.DataFrame):
-        """
-        Сравнение компаний по ценам и другим параметрам.
-        """
-        print("\n### Сравнение компаний ###")
-        print("Сравнение цен (PREVPRICE):")
-        print(data[["SECID", "PREVPRICE", "FACEVALUE", "LOTSIZE"]])
-
-    @staticmethod
-    def visualize_data(data: pd.DataFrame, ticker: str):
-        """
-        Визуализация данных.
+        Анализирует все данные, доступные в DataFrame.
         """
         if data.empty:
-            print("Нет данных для визуализации.")
+            print(f"Данные для {ticker} отсутствуют для анализа.")
             return
 
-        # График сравнения цен
+        print(f"\n### Общая информация о данных для {ticker} ###")
+        print(data.info())
+
+        print(f"\n### Описание числовых данных для {ticker} ###")
+        print(data.describe())
+
+        print(f"\n### Проверка на пропущенные значения для {ticker} ###")
+        missing_values = data.isnull().sum()
+        print(missing_values[missing_values > 0])
+
+    @staticmethod
+    def analyze_prices(data: pd.DataFrame, ticker: str):
+        """
+        Анализ цен акций: средняя, минимальная, максимальная цена.
+        """
+        print(f"\n### Анализ цен для {ticker} ###")
+        if "CLOSE" in data.columns:
+            print(data["CLOSE"].describe())
+
+            # Процентное изменение цены (если возможно)
+            if "PREVWAPRICE" in data.columns:
+                data["PRICE_CHANGE_%"] = (
+                    (data["CLOSE"] - data["PREVWAPRICE"]) / data["PREVWAPRICE"] * 100
+                )
+                print(f"\nПроцентное изменение цены для {ticker}:")
+                print(data[["TRADEDATE", "PRICE_CHANGE_%"]])
+            else:
+                print(f"Колонка 'PREVWAPRICE' отсутствует, расчет процентного изменения для {ticker} невозможен.")
+        else:
+            print(f"Данные для {ticker} не содержат необходимого столбца 'CLOSE'.")
+
+    @staticmethod
+    def calculate_moving_averages(data: pd.DataFrame, ticker: str):
+        """
+        Рассчитывает скользящие средние и находит точки пересечения.
+        """
+        if "CLOSE" not in data.columns:
+            print(f"Данные для {ticker} не содержат столбца 'CLOSE' для расчёта скользящих средних.")
+            return
+
+        data["SMA_10"] = data["CLOSE"].rolling(window=10).mean()
+        data["SMA_50"] = data["CLOSE"].rolling(window=50).mean()
+
+        # Выявление точек пересечения (золотые и мертвые кресты)
+        data["CROSS"] = (data["SMA_10"] > data["SMA_50"]).astype(int).diff()
+        golden_crosses = data[data["CROSS"] == 1]
+        death_crosses = data[data["CROSS"] == -1]
+
+        print(f"\n### Скользящие средние для {ticker} ###")
+        print(f"Золотые кресты (дата пересечения): {golden_crosses['TRADEDATE'].tolist()}")
+        print(f"Мертвые кресты (дата пересечения): {death_crosses['TRADEDATE'].tolist()}")
+
+        # Построение графика
         plt.figure(figsize=(10, 5))
-        plt.plot(data["SECID"], data["PREVPRICE"], label="PrevPrice", marker="o")
-        plt.plot(data["SECID"], data["PREVWAPRICE"], label="PrevWaPrice", marker="o")
-        plt.title(f"Сравнение цен для {ticker}")
-        plt.xlabel("SECID")
+        plt.plot(data["TRADEDATE"], data["CLOSE"], label="Цена закрытия", color="blue")
+        plt.plot(data["TRADEDATE"], data["SMA_10"], label="SMA 10", color="green")
+        plt.plot(data["TRADEDATE"], data["SMA_50"], label="SMA 50", color="red")
+        plt.title(f"Скользящие средние для {ticker}")
+        plt.xlabel("Дата")
         plt.ylabel("Цена")
         plt.legend()
         plt.grid(True)
+        plt.xticks(rotation=45)
         plt.show()
 
-        # Гистограмма процентного изменения
+    @staticmethod
+    def calculate_volatility(data: pd.DataFrame, ticker: str):
+        """
+        Рассчитывает волатильность и строит график.
+        """
+        if "CLOSE" not in data.columns:
+            print(f"Данные для {ticker} не содержат столбца 'CLOSE' для расчёта волатильности.")
+            return
+
+        data["VOLATILITY"] = data["CLOSE"].rolling(window=10).std()
+
+        print(f"\n### Волатильность для {ticker} ###")
+        print(data[["TRADEDATE", "VOLATILITY"]].dropna())
+
+        # Построение графика волатильности
+        plt.figure(figsize=(10, 5))
+        plt.plot(data["TRADEDATE"], data["VOLATILITY"], label="Волатильность (10-дневная)", color="purple")
+        plt.title(f"Волатильность для {ticker}")
+        plt.xlabel("Дата")
+        plt.ylabel("Волатильность")
+        plt.grid(True)
+        plt.legend()
+        plt.xticks(rotation=45)
+        plt.show()
+
+    @staticmethod
+    def calculate_daily_returns(data: pd.DataFrame, ticker: str):
+        """
+        Рассчитывает дневную доходность и строит её распределение.
+        """
+        if "CLOSE" not in data.columns:
+            print(f"Данные для {ticker} не содержат столбца 'CLOSE' для расчёта доходности.")
+            return
+
+        data["DAILY_RETURN"] = data["CLOSE"].pct_change() * 100
+
+        print(f"\n### Дневная доходность для {ticker} ###")
+        print(data[["TRADEDATE", "DAILY_RETURN"]].dropna())
+
+        # Построение гистограммы доходности
         plt.figure(figsize=(8, 5))
-        plt.bar(data["SECID"], data["PRICE_CHANGE_%"], color="skyblue")
-        plt.title(f"Процентное изменение цен для {ticker}")
-        plt.xlabel("SECID")
-        plt.ylabel("Изменение (%)")
+        plt.hist(data["DAILY_RETURN"].dropna(), bins=20, color="orange", edgecolor="black")
+        plt.title(f"Распределение дневной доходности для {ticker}")
+        plt.xlabel("Доходность (%)")
+        plt.ylabel("Частота")
         plt.grid(True)
         plt.show()
