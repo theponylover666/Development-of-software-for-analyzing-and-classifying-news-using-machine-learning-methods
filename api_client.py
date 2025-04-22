@@ -237,7 +237,7 @@ if __name__ == "__main__":
     news = client.fetch_news_from_interfax(ticker, test_date)
 
     if news.empty:
-        print("⚠ Новости не найдены или не удалось подключиться.")
+        print("Новости не найдены или не удалось подключиться.")
     else:
         print(f"Найдено {len(news)} новостей. Примеры:")
         for i, row in news.head(5).iterrows():

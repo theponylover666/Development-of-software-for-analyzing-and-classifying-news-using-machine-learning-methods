@@ -23,16 +23,26 @@ st.title("📊 Анализ новостей и динамики акций")
 
 with st.sidebar:
     st.header("Параметры анализа")
-    company = st.selectbox("Компания", COMPANIES)
+    company = st.selectbox("Выберите компанию", COMPANIES)
     start_date = st.date_input("Дата начала", datetime(2025, 2, 1))
     end_date = st.date_input("Дата окончания", datetime(2025, 3, 30))
     threshold = st.slider("Порог изменения цены (%)", 1.0, 10.0, 5.0, step=0.5)
-    forecast_days = st.slider("Дней для прогноза", 3, 30, 10)
+    forecast_days = st.slider("Дней для прогноза (в режиме анализа)", 3, 30, 10)
+
+    mode = st.radio(
+        "Режим работы",
+        ["Обычный анализ", "Проверка модели (валидация)"]
+    )
+    mode_map = {
+        "Обычный анализ": "analyze",
+        "Проверка модели (валидация)": "validate"
+    }
+
     analyze_btn = st.button("Запустить анализ")
+
 
 if analyze_btn:
     with st.spinner("Инициализация анализа..."):
-        mode = st.radio("Режим", ["analyze", "validate"], horizontal=True)
 
         payload = {
             "ticker_name": company,
@@ -40,7 +50,7 @@ if analyze_btn:
             "end_date": str(end_date),
             "threshold": threshold,
             "forecast_days": forecast_days,
-            "mode": mode
+            "mode": mode_map[mode]
         }
 
         try:

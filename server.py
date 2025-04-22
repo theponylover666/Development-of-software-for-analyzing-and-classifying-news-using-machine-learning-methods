@@ -11,6 +11,8 @@ import pandas as pd
 from app import MainApp
 from ml_models import LinearRegressionModel, ARIMAModel, SARIMAModel, SVRModel, KNNModel
 import matplotlib
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import numpy as np
 matplotlib.use("Agg")
 
 
@@ -113,10 +115,12 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             split_idx = int(len(stock_data) * 0.9)
             train_data, test_data = stock_data.iloc[:split_idx], stock_data.iloc[split_idx:]
             forecast_days = len(test_data)
-            log(f"Режим: validate. Обучение на {len(train_data)} днях, тест — {len(test_data)} дней.")
+            test_index = test_data.set_index("TRADEDATE").index
+            log(f"Режим: валидация. Обучение на {len(train_data)} днях, тест — {len(test_data)} дней.")
         else:
             train_data, test_data = stock_data.copy(), None
             forecast_days = req.forecast_days
+            test_index = None
 
         desc = stock_data["CLOSE"].describe()
         price_summary = (
@@ -142,21 +146,53 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             model = Model(train_data)
             ts = train_data.set_index("TRADEDATE")["CLOSE"]
 
-            if name == "arima":
-                forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days, return_data=True)
-                forecast_values = [point["value"] for point in forecast]
-                forecast_index = pd.date_range(start=ts.index[-1] + pd.Timedelta(days=1),
-                                               periods=len(forecast_values), freq="B")
-                fig = model.visualize(ts, forecast_values, forecast_index=forecast_index, title="ARIMA")
-            elif name == "sarima":
-                forecast = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12),
-                                          forecast_days=forecast_days, return_data=True)
-                forecast_values = [point["value"] for point in forecast]
-                forecast_index = pd.date_range(start=ts.index[-1] + pd.Timedelta(days=1),
-                                               periods=len(forecast_values), freq="B")
-                fig = model.visualize(ts, forecast_values, forecast_index=forecast_index, title="SARIMA")
+            if req.mode == "validate":
+                test_ts = test_data.set_index("TRADEDATE")["CLOSE"]
+                forecast_index = test_ts.index
+
+                if name == "arima":
+                    forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days, return_data=True)
+                    forecast_values = [point["value"] for point in forecast]
+                elif name == "sarima":
+                    forecast = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12),
+                                              forecast_days=forecast_days, return_data=True)
+                    forecast_values = [point["value"] for point in forecast]
+                else:
+                    if name in {"lr", "svr", "knn"}:
+                        forecast_fig = model.forecast(forecast_days)
+                        forecast_values = forecast_fig.axes[0].lines[-1].get_ydata()
+                        forecast_index = forecast_fig.axes[0].lines[-1].get_xdata()
+                        forecast_index = pd.to_datetime(forecast_index)
+                    else:
+                        forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days,
+                                                  return_data=True) if name == "arima" else \
+                            model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days,
+                                           return_data=True)
+                        forecast_values = [point["value"] for point in forecast]
+                        forecast_index = test_ts.index[:len(forecast_values)]
+
+                # сравнение прогноза с фактическими значениями
+                actual_values = test_ts.values[:len(forecast_values)]
+                forecast_values = forecast_values[:len(actual_values)]
+
+                mae = mean_absolute_error(actual_values, forecast_values)
+                rmse = mean_squared_error(actual_values, forecast_values) ** 0.5
+
+                log(f"{name.upper()} → MAE: {mae:.2f} | RMSE: {rmse:.2f}")
+                fig = model.visualize(
+                    ts=pd.concat([ts, test_ts[:len(forecast_values)]]),
+                    forecast=forecast_values,
+                    forecast_index=forecast_index[:len(forecast_values)],
+                    title=f"{name.upper()} (валидация)"
+                )
+
             else:
-                fig = model.forecast(forecast_days)
+                if name == "arima":
+                    fig = model.forecast(order=(1, 1, 1), forecast_days=forecast_days)
+                elif name == "sarima":
+                    fig = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days)
+                else:
+                    fig = model.forecast(forecast_days)
 
             if fig:
                 graph_paths.append(save_plot(fig, f"forecast_{name}"))
