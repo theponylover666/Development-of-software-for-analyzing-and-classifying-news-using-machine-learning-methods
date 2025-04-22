@@ -1,0 +1,6 @@
+
+zpython:S117&"\Rename this local variable "X_sentiment" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦ша’8Фк‰зЮ2
+upython:S117*"WRename this local variable "X_test" to match the regular expression ^[_a-z][a-z0-9_]*$.(но№°8Фк‰зЮ2
+upython:S117%"WRename this local variable "X_text" to match the regular expression ^[_a-z][a-z0-9_]*$.(мҐ№Ѓ8Фк‰зЮ2
+vpython:S117*"XRename this local variable "X_train" to match the regular expression ^[_a-z][a-z0-9_]*$.(но№°8Фк‰зЮ2
+Bpython:S6741'"Do not use "DataFrame.values".(Пђіїъяяяя8Хк‰зЮ2
