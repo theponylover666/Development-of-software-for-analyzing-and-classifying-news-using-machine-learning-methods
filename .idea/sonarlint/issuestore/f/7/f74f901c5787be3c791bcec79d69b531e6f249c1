@@ -1,0 +1,28 @@
+
+ujavascript:S3776"TRefactor this function to reduce its Cognitive Complexity from 41 to the 15 allowed.(Å€½Æùÿÿÿÿ
+?javascript:S125"Remove this commented out code.(İ’áÎıÿÿÿÿ
+zjavascript:S2703"^Add the "let", "const" or "var" keyword to this declaration of "allNodes" to make it explicit.(Ëâ«ö
+javascript:S2703"eAdd the "let", "const" or "var" keyword to this declaration of "highlightActive" to make it explicit.(ó¥×£
+Ejavascript:S3504")Unexpected var, use let or const instead.(óµÊŒ
+Ejavascript:S3504	")Unexpected var, use let or const instead.(æÔêš
+Jjavascript:S3504
+")Unexpected var, use let or const instead.(‰˜÷Ûşÿÿÿÿ
+?javascript:S125"Remove this commented out code.(¯¶Àâúÿÿÿÿ
+Ejavascript:S3504")Unexpected var, use let or const instead.(Î™Íä
+Jjavascript:S3504")Unexpected var, use let or const instead.(ºşışÿÿÿÿ
+?javascript:S125#"Remove this commented out code.(µ÷şµÿÿÿÿÿ
+?javascript:S125."Remove this commented out code.(Ãáïıÿÿÿÿ
+:javascript:S125B"Remove this commented out code.(ôìš®
+:javascript:S125D"Remove this commented out code.(İÜĞé
+Jjavascript:S3504N")Unexpected var, use let or const instead.(Õï‹›ûÿÿÿÿ
+wjavascript:S3923O"[Remove this conditional structure or edit its code blocks so that they're not all the same.(Êãœ¬
+:javascript:S125R"Remove this commented out code.(Ì©£è
+hjavascript:S1871W"LThis branch's code block is the same as the block for the branch on line 79.(å¥‡
+?javascript:S125X"Remove this commented out code.(–ï¶êûÿÿÿÿ
+:javascript:S125["Remove this commented out code.(Ì©£è
+pjavascript:S3776d"TRefactor this function to reduce its Cognitive Complexity from 29 to the 15 allowed.(Ú“ˆ»
+}javascript:S2703h"bAdd the "let", "const" or "var" keyword to this declaration of "filterActive" to make it explicit.(ùŒ
+gjavascript:S4138t"LExpected a `for-of` loop instead of a `for` loop with this simple iteration.(«¶€4
+Kjavascript:S3504‰")Unexpected var, use let or const instead.(Õï‹›ûÿÿÿÿ
+xjavascript:S3923Š"[Remove this conditional structure or edit its code blocks so that they're not all the same.(Êãœ¬
+jjavascript:S1871‘"MThis branch's code block is the same as the block for the branch on line 138.(å¥‡
