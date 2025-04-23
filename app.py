@@ -21,6 +21,7 @@ class MainApp:
         self.vectorizer = joblib.load("models/news_vectorizer.pkl")
         self.section_encoder = joblib.load("models/news_section_encoder.pkl")
         self.label_encoder = joblib.load("models/news_label_encoder.pkl")
+        self.ticker_encoder = joblib.load("models/news_ticker_encoder.pkl")
         self.text_preprocessor = TextPreprocessor()
 
     def run(self, ticker, from_date, to_date, output_file, threshold=5.0, forecast_days=10):

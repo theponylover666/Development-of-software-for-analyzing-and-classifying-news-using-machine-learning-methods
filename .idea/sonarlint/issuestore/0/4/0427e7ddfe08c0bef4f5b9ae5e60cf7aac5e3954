@@ -1,5 +1,6 @@
 
 spython:S3776"TRefactor this function to reduce its Cognitive Complexity from 41 to the 15 allowed.(¶Ä›Û8€©íÐå2
-mpython:S33582"IExtract this nested conditional expression into an independent statement.(ËˆôÇÿÿÿÿÿ8€©íÐå2
-hpython:S3358<"IExtract this nested conditional expression into an independent statement.(©Ï¸¾8€©íÐå2
-Qpython:S1481c"-Remove the unused local variable "processor".(ÄÚßëüÿÿÿÿ8€©íÐå2
+mpython:S3358-"IExtract this nested conditional expression into an independent statement.(ËˆôÇÿÿÿÿÿ8¯Ê¼’æ2
+hpython:S33585"IExtract this nested conditional expression into an independent statement.(©Ï¸¾8¯Ê¼’æ2
+Bpython:S125U"Remove this commented out code.(¥ô«Îÿÿÿÿÿ8÷ƒ£“æ2
+Qpython:S1481a"-Remove the unused local variable "processor".(ÄÚßëüÿÿÿÿ8€©íÐå2

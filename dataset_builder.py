@@ -3,11 +3,10 @@ import pandas as pd
 import os
 from api_client import APIClient
 from data_processor import DataProcessor
-
+import matplotlib.pyplot as plt
 
 def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
-                           window_days: int = 3, threshold: float = 1.0) -> pd.DataFrame:
-    """Создание размеченного датасета на основе новостей и цен акций."""
+                           window_days: int = 5, threshold: float = 0.5) -> pd.DataFrame:
     stock_data = stock_data.copy()
     stock_data["TRADEDATE"] = pd.to_datetime(stock_data["TRADEDATE"])
     news_data["date"] = pd.to_datetime(news_data["date"])
@@ -36,26 +35,20 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
             continue
         base_price = base_row["CLOSE"].iloc[0]
 
-        # --- Берём ближайшие N рабочих дней
-        future_data = stock_data[stock_data.index.date > news_date]
-        future_data = future_data.iloc[:window_days]
-
+        future_data = stock_data[stock_data.index.date > news_date].iloc[:window_days]
         if future_data.empty or len(future_data) < 2:
             skipped_dates += 1
             continue
 
-        # --- Метка направления (рост/падение)
         future_price = future_data["CLOSE"].mean()
         price_change = ((future_price - base_price) / base_price) * 100
         label = 1 if price_change > threshold else (-1 if price_change < -threshold else 0)
 
-        # --- Метка волатильности
         vol_start = base_row["VOLATILITY"].iloc[0]
         vol_future = future_data["VOLATILITY"].mean()
         vol_change = (vol_future - vol_start) if pd.notna(vol_start) else 0
         label_volatility = 1 if vol_change > 0.01 else 0
 
-        # --- Тип тренда
         trend_days = future_data["CLOSE"].diff().dropna()
         trend_type = "uptrend" if all(trend_days > 0) else "downtrend" if all(trend_days < 0) else "none"
 
@@ -64,10 +57,8 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
             impact_type.append("trend")
         if label_volatility:
             impact_type.append("volatility")
-
         impact_type_str = ",".join(impact_type) if impact_type else "none"
 
-        # --- Финальный класс
         if label == 1:
             impact_class = "up_vol" if label_volatility else "up"
         elif label == -1:
@@ -86,11 +77,18 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
         })
 
     df = pd.DataFrame(labeled)
-
     print(f"\nРазмечено новостей: {len(df)}")
     print(f"Пропущено новостей (нет данных по дате или окну): {skipped_dates}")
     print("\nРаспределение по классам:")
     print(df["impact_class"].value_counts())
+
+    # Визуализация
+    #df["impact_class"].value_counts().plot(kind="bar", title="Распределение классов")
+    #plt.xlabel("Класс")
+    #plt.ylabel("Количество")
+    #plt.tight_layout()
+    #plt.show()
+
     return df
 
 def build_dataset(ticker: str, start_date: str, end_date: str, threshold: float = 5.0):
@@ -167,7 +165,7 @@ def build_and_merge_datasets(tickers, start_date, end_date, threshold=5.0):
     if all_datasets:
         combined = pd.concat(all_datasets, ignore_index=True)
         combined.to_csv("data/labeled_news_ALL.csv", index=False, encoding="utf-8-sig")
-        print("\n✅ Объединённый датасет сохранён: data/labeled_news_ALL.csv")
+        print("\nОбъединённый датасет сохранён: data/labeled_news_ALL.csv")
     else:
         print("Не удалось собрать ни одного датасета.")
 
@@ -179,8 +177,8 @@ def main():
         "RUAL", "TRNFP", "AKRN", "AFLT", "IRAO"
     ]
     start_date = "2021-01-01"
-    end_date = "2025-04-20"
-    threshold = 1.5
+    end_date = "2025-04-01"
+    threshold = 0.5
 
     build_and_merge_datasets(tickers, start_date, end_date, threshold)
 

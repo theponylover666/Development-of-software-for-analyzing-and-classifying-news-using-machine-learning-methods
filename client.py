@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
+import pandas as pd
 
 API_BASE = "http://localhost:8000"
 COMPANIES = ["Сбербанк", "Газпром", "Лукойл", "Яндекс", "Роснефть"]
@@ -19,7 +20,7 @@ section_map = {
             }
 
 st.set_page_config(layout="wide")
-st.title("📊 Анализ новостей и динамики акций")
+st.title("Анализ новостей и динамики акций")
 
 with st.sidebar:
     st.header("Параметры анализа")
@@ -99,11 +100,11 @@ if analyze_btn:
             st.success("Анализ завершён!")
 
             # --- Краткий анализ цен
-            st.subheader("📈 Краткий анализ цен")
+            st.subheader("Краткий анализ цен")
             st.markdown(result["price_summary"])
 
             # --- Новости по значимым дням
-            st.subheader("📰 Новости по значимым дням")
+            st.subheader("Новости по значимым дням")
             if result["news"]:
                 for item in result["news"]:
                     section = item.get("section", "неизвестно")
@@ -117,7 +118,7 @@ if analyze_btn:
                 st.info("Нет новостей по значимым дням.")
 
             # --- Новости за последние 7 дней
-            st.subheader("🗓 Новости за последние 7 дней")
+            st.subheader("Новости за последние 7 дней")
             if result["recent_news"]:
                 for item in result["recent_news"]:
                     section = item.get("section", "неизвестно")
@@ -131,11 +132,20 @@ if analyze_btn:
                 st.info("Нет новостей за последние 7 дней.")
 
             # --- Финальный вывод
-            st.subheader("📌 Финальный вывод")
+            st.subheader("Финальный вывод")
             st.markdown(result["summary"])
 
+            # --- Сравнение моделей по метрикам
+            if "metrics" in result and result["metrics"]:
+                st.subheader("Сравнение моделей")
+                df_metrics = pd.DataFrame(result["metrics"])
+                df_metrics["mae"] = df_metrics["mae"].round(3)
+                df_metrics["rmse"] = df_metrics["rmse"].round(3)
+                df_metrics = df_metrics.sort_values("rmse")
+                st.dataframe(df_metrics)
+
             # --- Графики
-            st.subheader("📊 Графики прогноза")
+            st.subheader("Графики прогноза")
             for path in result["graph_paths"]:
                 with open(path, "rb") as f:
                     img = Image.open(BytesIO(f.read()))

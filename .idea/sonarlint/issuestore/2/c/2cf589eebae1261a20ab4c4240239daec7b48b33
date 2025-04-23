@@ -1,8 +1,10 @@
 
-}python:S1173"ZRename this local variable "X_section" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÚÙ¼ÿÿÿÿÿ8ç¶ÏÍå2
-zpython:S117."\Rename this local variable "X_sentiment" to match the regular expression ^[_a-z][a-z0-9_]*$.(ñ„ïğ8ç¶ÏÍå2
-upython:S117="WRename this local variable "X_test" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦¤ 8ç¶ÏÍå2
-upython:S117-"WRename this local variable "X_text" to match the regular expression ^[_a-z][a-z0-9_]*$.(ì¥¹8ç¶ÏÍå2
-vpython:S117="XRename this local variable "X_train" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦¤ 8ç¶ÏÍå2
-<python:S67417"Do not use "DataFrame.values".(¯Åa8ç¶ÏÍå2
-<python:S67417"Do not use "DataFrame.values".(¯Åa8ç¶ÏÍå2
+}python:S1174"ZRename this local variable "X_section" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÚÙ¼ÿÿÿÿÿ8Ù´Î’æ2
+zpython:S1170"\Rename this local variable "X_sentiment" to match the regular expression ^[_a-z][a-z0-9_]*$.(ñ„ïğ8Ù´Î’æ2
+upython:S117B"WRename this local variable "X_test" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦¤ 8Ù´Î’æ2
+upython:S117/"WRename this local variable "X_text" to match the regular expression ^[_a-z][a-z0-9_]*$.(ì¥¹8Ù´Î’æ2
+wpython:S1179"YRename this local variable "X_ticker" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÍÁ¦œ8Ù´Î’æ2
+vpython:S117B"XRename this local variable "X_train" to match the regular expression ^[_a-z][a-z0-9_]*$.(¦¤ 8Ù´Î’æ2
+Bpython:S6741="Do not use "DataFrame.values".(úìä¦ıÿÿÿÿ8Ù´Î’æ2
+Bpython:S6741="Do not use "DataFrame.values".(úìä¦ıÿÿÿÿ8Ù´Î’æ2
+Bpython:S6741="Do not use "DataFrame.values".(úìä¦ıÿÿÿÿ8Ù´Î’æ2

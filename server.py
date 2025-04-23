@@ -9,14 +9,11 @@ import os
 import shutil
 import pandas as pd
 from app import MainApp
-from ml_models import LinearRegressionModel, ARIMAModel, SARIMAModel, SVRModel, KNNModel
+from ml_models import LinearRegressionModel, ARIMAModel, SARIMAModel, SVRModel, KNNModel, XGBoostModel
 import matplotlib
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-import numpy as np
 matplotlib.use("Agg")
 
-
-# === Настройки ===
 app = FastAPI()
 main_app = MainApp()
 TEMP_DIR = "temp_graphs"
@@ -30,6 +27,26 @@ COMPANY_TO_TICKER = {
     "Яндекс": "YNDX",
     "Роснефть": "ROSN"
 }
+
+def plot_forecast(ts, forecast_values, forecast_index, title="", ground_truth=None):
+    plt.figure(figsize=(12, 6))
+    ts_index = pd.to_datetime(ts.index)
+
+    plt.plot(ts_index, ts.values, label="Исторические данные", color="blue", alpha=0.6)
+    plt.plot(forecast_index, forecast_values, label="Прогноз", color="red", linestyle="--", marker="x")
+
+    if ground_truth is not None:
+        ground_truth = ground_truth[:len(forecast_values)]
+        plt.plot(forecast_index, ground_truth.values, label="Фактические данные", color="green", linestyle=":", marker="o")
+
+    plt.title(title, fontsize=14)
+    plt.xlabel("Дата", fontsize=12)
+    plt.ylabel("Цена закрытия", fontsize=12)
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend()
+    plt.gcf().autofmt_xdate()
+    plt.tight_layout()
+    return plt.gcf()
 
 # === Модели данных ===
 class AnalyzeRequest(BaseModel):
@@ -47,6 +64,11 @@ class NewsItem(BaseModel):
     url: str
     section: str = "неизвестно"
 
+class MetricItem(BaseModel):
+    model: str
+    mae: float
+    rmse: float
+
 class AnalyzeResponse(BaseModel):
     logs: List[str]
     news: List[NewsItem]
@@ -54,6 +76,7 @@ class AnalyzeResponse(BaseModel):
     summary: str
     price_summary: str
     graph_paths: List[str]
+    metrics: List[MetricItem] = []
 
 class AnalyzeStartResponse(BaseModel):
     task_id: str
@@ -104,6 +127,8 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
         os.makedirs(TEMP_DIR, exist_ok=True)
 
         stock_data = main_app.api_client.fetch_stock_data(ticker, req.start_date, req.end_date)
+        stock_data["TRADEDATE"] = pd.to_datetime(stock_data["TRADEDATE"])
+        stock_data = stock_data.drop_duplicates(subset="TRADEDATE", keep="last").reset_index(drop=True)
         if stock_data.empty:
             raise Exception("Нет данных по акциям.")
 
@@ -116,11 +141,13 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             train_data, test_data = stock_data.iloc[:split_idx], stock_data.iloc[split_idx:]
             forecast_days = len(test_data)
             test_index = test_data.set_index("TRADEDATE").index
+            day_offset = train_data.shape[0]
             log(f"Режим: валидация. Обучение на {len(train_data)} днях, тест — {len(test_data)} дней.")
         else:
             train_data, test_data = stock_data.copy(), None
             forecast_days = req.forecast_days
             test_index = None
+            day_offset = 0
 
         desc = stock_data["CLOSE"].describe()
         price_summary = (
@@ -140,36 +167,40 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
 
         # === Прогнозирование
         graph_paths = []
-
+        metrics = []
         for name, Model in [("lr", LinearRegressionModel), ("arima", ARIMAModel),
-                            ("sarima", SARIMAModel), ("svr", SVRModel), ("knn", KNNModel)]:
-            model = Model(train_data)
+                            ("sarima", SARIMAModel), ("svr", SVRModel),("xgb", XGBoostModel),
+                             ("knn", KNNModel)]:
+            if name in {"arima", "sarima"}:
+                model = Model(train_data)
+            else:
+                model = Model(train_data, day_offset=day_offset)
             ts = train_data.set_index("TRADEDATE")["CLOSE"]
 
             if req.mode == "validate":
                 test_ts = test_data.set_index("TRADEDATE")["CLOSE"]
-                forecast_index = test_ts.index
-
+                test_ts = test_ts[~test_ts.index.duplicated(keep='last')]
                 if name == "arima":
                     forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days, return_data=True)
                     forecast_values = [point["value"] for point in forecast]
+                    forecast_index = test_index[:len(forecast_values)]
                 elif name == "sarima":
                     forecast = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12),
                                               forecast_days=forecast_days, return_data=True)
                     forecast_values = [point["value"] for point in forecast]
+                    forecast_index = test_index[:len(forecast_values)]
                 else:
-                    if name in {"lr", "svr", "knn"}:
-                        forecast_fig = model.forecast(forecast_days)
-                        forecast_values = forecast_fig.axes[0].lines[-1].get_ydata()
-                        forecast_index = forecast_fig.axes[0].lines[-1].get_xdata()
-                        forecast_index = pd.to_datetime(forecast_index)
+                    if name in {"lr", "svr", "knn","xgb"}:
+                        forecast_data = model.forecast(forecast_days=forecast_days, return_data=True)
+                        forecast_values = [point["value"] for point in forecast_data]
+                        forecast_index = test_index[:len(forecast_values)]
                     else:
                         forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days,
                                                   return_data=True) if name == "arima" else \
                             model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days,
                                            return_data=True)
                         forecast_values = [point["value"] for point in forecast]
-                        forecast_index = test_ts.index[:len(forecast_values)]
+                        forecast_index = test_index[:len(forecast_values)]
 
                 # сравнение прогноза с фактическими значениями
                 actual_values = test_ts.values[:len(forecast_values)]
@@ -177,24 +208,32 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
 
                 mae = mean_absolute_error(actual_values, forecast_values)
                 rmse = mean_squared_error(actual_values, forecast_values) ** 0.5
-
                 log(f"{name.upper()} → MAE: {mae:.2f} | RMSE: {rmse:.2f}")
-                fig = model.visualize(
-                    ts=pd.concat([ts, test_ts[:len(forecast_values)]]),
-                    forecast=forecast_values,
-                    forecast_index=forecast_index[:len(forecast_values)],
-                    title=f"{name.upper()} (валидация)"
+                metrics.append((name.upper(), mae, rmse))
+                fig = plot_forecast(
+                    ts,
+                    forecast_values,
+                    forecast_index[:len(forecast_values)],
+                    title=f"{name.upper()} (валидация)",
+                    ground_truth=test_ts
                 )
-
             else:
                 if name == "arima":
-                    fig = model.forecast(order=(1, 1, 1), forecast_days=forecast_days)
+                    try:
+                        fig = model.forecast(order=(1, 1, 1), forecast_days=forecast_days)
+                    except Exception as e:
+                        log(f"ARIMA: ошибка прогноза — {e}")
+                        fig = None
                 elif name == "sarima":
-                    fig = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days)
+                    try:
+                        fig = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days)
+                    except Exception as e:
+                        log(f"SARIMA: ошибка прогноза — {e}")
+                        fig = None
                 else:
                     fig = model.forecast(forecast_days)
 
-            if fig:
+            if hasattr(fig, "savefig"):
                 graph_paths.append(save_plot(fig, f"forecast_{name}"))
 
         # === Новости по значимым дням
@@ -204,7 +243,7 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
         log(f"Итог: Найдено {len(news_df)} новостей для {len(significant)} значимых дней.")
 
         for _, row in news_df.iterrows():
-            vec = prepare_vector(row["title"], row.get("section", "unknown"))
+            vec = prepare_vector(row["title"], row.get("section", "unknown"), ticker)
             pred = main_app.multi_model.predict(vec)[0]
             label = {1: "Рост", -1: "Падение"}.get(pred, "Нейтрально")
             news_output.append(NewsItem(
@@ -230,10 +269,16 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
                 for s in sections
             ]
             tfidf = main_app.vectorizer.transform(processed)
+
+            ticker_code = main_app.ticker_encoder.transform([ticker])[0] \
+                if ticker in main_app.ticker_encoder.classes_ else 0
+            ticker_codes = [[ticker_code] for _ in range(len(recent_df))]
+
             vectors = hstack([
                 tfidf,
                 [[s] for s in sentiments],
-                [[sc] for sc in section_codes]
+                [[sc] for sc in section_codes],
+                ticker_codes
             ])
 
             if vectors.shape[1] != main_app.multi_model.n_features_in_:
@@ -265,13 +310,16 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             summary = "Нет новостей за последние 7 дней."
 
         # === Финальный ответ
+        metrics_payload = [{"model": name, "mae": mae, "rmse": rmse} for name, mae, rmse in metrics]
+
         TASKS[task_id]["result"] = AnalyzeResponse(
             logs=logs,
             news=news_output,
             recent_news=recent_output,
             summary=summary,
             price_summary=price_summary,
-            graph_paths=graph_paths
+            graph_paths=graph_paths,
+            metrics=metrics_payload
         )
         TASKS[task_id]["status"] = "done"
 
@@ -281,15 +329,20 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
 
 
 
-def prepare_vector(title: str, section: str):
-    """Предобработка и формирование вектора признаков одной новости."""
+def prepare_vector(title: str, section: str, ticker: str):
     processed = main_app.text_preprocessor.preprocess(title)
     sentiment = main_app.text_preprocessor.analyze_sentiment(title)
+
     section_code = main_app.section_encoder.transform([section])[0] \
         if section in main_app.section_encoder.classes_ else 0
+
+    ticker_code = main_app.ticker_encoder.transform([ticker])[0] \
+        if ticker in main_app.ticker_encoder.classes_ else 0
 
     return hstack([
         main_app.vectorizer.transform([processed]),
         [[sentiment]],
-        [[section_code]]
+        [[section_code]],
+        [[ticker_code]]
     ])
+
