@@ -1,4 +1,4 @@
-﻿date,title,label,label_volatility,impact_type,impact_class,section,ticker
-2021-05-24,"Совет директоров ""Транснефти"" рекомендовал дивиденды по 9224,28 руб. на акцию",0,0,none,neutral,business,TRNFP
-2023-06-01,"Белоруссия предложила ""Транснефти"" повысить тарифы на прокачку нефти в 1,8 раза",0,1,volatility,neutral_vol,business,TRNFP
-2023-06-01,"Белоруссия предложила ""Транснефти"" повысить тарифы на прокачку нефти в 1,8 раза",0,1,volatility,neutral_vol,business,TRNFP
+﻿date,title,label,label_volatility,impact_type,impact_class,section,sentiment,title_len,num_words,clean_title,ticker
+2021-05-24,"Совет директоров ""Транснефти"" рекомендовал дивиденды по 9224,28 руб. на акцию",0,0,trend,neutral,business,1,77,5,директор рекомендовать дивиденд руб акция,TRNFP
+2023-05-31,"Белоруссия предложила ""Транснефти"" повысить тарифы на прокачку нефти в 1,8 раза",1,1,"trend,volatility",up_vol,business,0,79,6,предложить повысить тариф прокачка нефть раз,TRNFP
+2023-05-31,"Белоруссия предложила ""Транснефти"" повысить тарифы на прокачку нефти в 1,8 раза",1,1,"trend,volatility",up_vol,business,0,79,6,предложить повысить тариф прокачка нефть раз,TRNFP

@@ -25,27 +25,42 @@ COMPANY_TO_TICKER = {
     "Газпром": "GAZP",
     "Лукойл": "LKOH",
     "Яндекс": "YNDX",
-    "Роснефть": "ROSN"
+    "Роснефть": "ROSN",
+    "ВТБ": "VTBR",
+    "Магнит": "MGNT",
+    "МТС": "MTSS",
+    "Аэрофлот": "AFLT"
 }
 
 def plot_forecast(ts, forecast_values, forecast_index, title="", ground_truth=None):
+    import matplotlib.dates as mdates
+
     plt.figure(figsize=(12, 6))
     ts_index = pd.to_datetime(ts.index)
+    forecast_index = pd.to_datetime(forecast_index)
 
+    # Основные линии графика
     plt.plot(ts_index, ts.values, label="Исторические данные", color="blue", alpha=0.6)
     plt.plot(forecast_index, forecast_values, label="Прогноз", color="red", linestyle="--", marker="x")
 
     if ground_truth is not None:
         ground_truth = ground_truth[:len(forecast_values)]
-        plt.plot(forecast_index, ground_truth.values, label="Фактические данные", color="green", linestyle=":", marker="o")
+        plt.plot(forecast_index, ground_truth.values, label="Фактические данные",
+                 color="green", linestyle=":", marker="o")
 
+    # Вертикальная линия конца тренировочных данных
+    if len(ts_index) > 0:
+        plt.axvline(ts_index[-1], color="gray", linestyle="--", alpha=0.5)
+    # Оформление
     plt.title(title, fontsize=14)
     plt.xlabel("Дата", fontsize=12)
     plt.ylabel("Цена закрытия", fontsize=12)
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.legend()
-    plt.gcf().autofmt_xdate()
+    plt.xticks(rotation=45, fontsize=10)
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     plt.tight_layout()
+
     return plt.gcf()
 
 # === Модели данных ===
@@ -55,7 +70,7 @@ class AnalyzeRequest(BaseModel):
     end_date: str
     threshold: float
     forecast_days: int
-    mode: str = "analyze"
+    mode: str = "monthly"
 
 class NewsItem(BaseModel):
     date: str
@@ -85,7 +100,6 @@ class AnalyzeStatusResponse(BaseModel):
     status: str
     logs: List[str]
 
-
 # === Эндпоинты ===
 @app.post("/analyze/start", response_model=AnalyzeStartResponse)
 def start_analysis(req: AnalyzeRequest, background_tasks: BackgroundTasks):
@@ -112,7 +126,6 @@ def get_result(task_id: str):
         raise HTTPException(status_code=404, detail="Результат ещё не готов")
     return task["result"]
 
-
 # === Основная логика анализа ===
 def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
     logs, news_output, recent_output = [], [], []
@@ -127,6 +140,8 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
         os.makedirs(TEMP_DIR, exist_ok=True)
 
         stock_data = main_app.api_client.fetch_stock_data(ticker, req.start_date, req.end_date)
+        if stock_data is None or stock_data.empty or "TRADEDATE" not in stock_data.columns:
+            raise Exception("Нет данных по акциям или отсутствует колонка 'TRADEDATE'.")
         stock_data["TRADEDATE"] = pd.to_datetime(stock_data["TRADEDATE"])
         stock_data = stock_data.drop_duplicates(subset="TRADEDATE", keep="last").reset_index(drop=True)
         if stock_data.empty:
@@ -134,15 +149,29 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
 
         log(f"Запуск анализа для {ticker}...")
         log(f"Данные успешно получены. Всего записей: {len(stock_data)}")
-
-        # === Подготовка данных ===
+        mode_label = "валидация" if req.mode == "validate" else "прогноз по месяцу"
         if req.mode == "validate":
             split_idx = int(len(stock_data) * 0.9)
             train_data, test_data = stock_data.iloc[:split_idx], stock_data.iloc[split_idx:]
             forecast_days = len(test_data)
-            test_index = test_data.set_index("TRADEDATE").index
+            test_index = pd.to_datetime(test_data["TRADEDATE"])
             day_offset = train_data.shape[0]
             log(f"Режим: валидация. Обучение на {len(train_data)} днях, тест — {len(test_data)} дней.")
+
+        elif req.mode == "monthly":
+            stock_data.set_index("TRADEDATE", inplace=True)
+            stock_data = stock_data.asfreq("B")
+            stock_data["CLOSE"] = stock_data["CLOSE"].ffill()
+
+            last_month = stock_data.index.max().to_period("M")
+            train_data = stock_data[stock_data.index.to_period("M") < last_month].copy().reset_index()
+            test_data = stock_data[stock_data.index.to_period("M") == last_month].copy().reset_index()
+
+            forecast_days = len(test_data)
+            test_index = pd.to_datetime(test_data["TRADEDATE"])
+            day_offset = train_data.shape[0]
+            log(f"Режим: по месяцу. Обучение на {len(train_data)} точках, тест на {len(test_data)} дней ({last_month})")
+
         else:
             train_data, test_data = stock_data.copy(), None
             forecast_days = req.forecast_days
@@ -159,26 +188,24 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             f"- Стд. отклонение: {desc['std']:.2f}"
         )
 
+        ts = pd.Series(train_data["CLOSE"].values, index=pd.to_datetime(train_data["TRADEDATE"]))
+
         def save_plot(fig, name):
             path = f"{TEMP_DIR}/{name}_{uuid.uuid4().hex[:8]}.png"
             fig.savefig(path)
             plt.close(fig)
             return path
 
-        # === Прогнозирование
         graph_paths = []
         metrics = []
-        for name, Model in [("lr", LinearRegressionModel), ("arima", ARIMAModel),
-                            ("sarima", SARIMAModel), ("svr", SVRModel),("xgb", XGBoostModel),
-                             ("knn", KNNModel)]:
-            if name in {"arima", "sarima"}:
-                model = Model(train_data)
-            else:
-                model = Model(train_data, day_offset=day_offset)
-            ts = train_data.set_index("TRADEDATE")["CLOSE"]
+        for name, Model in [
+            ("lr", LinearRegressionModel), ("arima", ARIMAModel), ("sarima", SARIMAModel),
+            ("svr", SVRModel), ("xgb", XGBoostModel), ("knn", KNNModel)
+        ]:
+            model = Model(train_data) if name in {"arima", "sarima"} else Model(train_data, day_offset=day_offset)
 
-            if req.mode == "validate":
-                test_ts = test_data.set_index("TRADEDATE")["CLOSE"]
+            if req.mode in {"validate", "monthly"}:
+                test_ts = pd.Series(test_data["CLOSE"].values, index=pd.to_datetime(test_data["TRADEDATE"]))
                 test_ts = test_ts[~test_ts.index.duplicated(keep='last')]
                 if name == "arima":
                     forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days, return_data=True)
@@ -190,8 +217,12 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
                     forecast_values = [point["value"] for point in forecast]
                     forecast_index = test_index[:len(forecast_values)]
                 else:
-                    if name in {"lr", "svr", "knn","xgb"}:
-                        forecast_data = model.forecast(forecast_days=forecast_days, return_data=True)
+                    tune = name in {"svr", "xgb"}
+                    if name in {"lr", "svr", "knn", "xgb"}:
+                        if tune:
+                            forecast_data = model.forecast(forecast_days=forecast_days, return_data=True, tune=True)
+                        else:
+                            forecast_data = model.forecast(forecast_days=forecast_days, return_data=True)
                         forecast_values = [point["value"] for point in forecast_data]
                         forecast_index = test_index[:len(forecast_values)]
                     else:
@@ -202,19 +233,18 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
                         forecast_values = [point["value"] for point in forecast]
                         forecast_index = test_index[:len(forecast_values)]
 
-                # сравнение прогноза с фактическими значениями
                 actual_values = test_ts.values[:len(forecast_values)]
                 forecast_values = forecast_values[:len(actual_values)]
-
                 mae = mean_absolute_error(actual_values, forecast_values)
                 rmse = mean_squared_error(actual_values, forecast_values) ** 0.5
                 log(f"{name.upper()} → MAE: {mae:.2f} | RMSE: {rmse:.2f}")
                 metrics.append((name.upper(), mae, rmse))
+
                 fig = plot_forecast(
                     ts,
                     forecast_values,
                     forecast_index[:len(forecast_values)],
-                    title=f"{name.upper()} (валидация)",
+                    title = f"{name.upper()} ({mode_label})",
                     ground_truth=test_ts
                 )
             else:
@@ -230,13 +260,15 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
                     except Exception as e:
                         log(f"SARIMA: ошибка прогноза — {e}")
                         fig = None
+                elif name in {"svr", "xgb"}:
+                    fig = model.forecast(forecast_days=forecast_days, tune=True)
                 else:
-                    fig = model.forecast(forecast_days)
+                    fig = model.forecast(forecast_days=forecast_days)
 
             if hasattr(fig, "savefig"):
                 graph_paths.append(save_plot(fig, f"forecast_{name}"))
 
-        # === Новости по значимым дням
+        stock_data = stock_data.reset_index()
         significant = main_app.api_client.detect_significant_changes(stock_data, req.threshold)
         log(f"\nНайдено {len(significant)} значительных изменений.")
         news_df = main_app.api_client.fetch_news_for_significant_days(ticker, stock_data, req.threshold)
@@ -254,7 +286,6 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
                 section=row.get("section", "неизвестно")
             ))
 
-        # === Новости за последние 7 дней
         log(f"\nАнализ новостного фона за последние 7 дней для {ticker}:")
         end_date = datetime.today().date()
         start_date = end_date - timedelta(days=7)
@@ -273,12 +304,15 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             ticker_code = main_app.ticker_encoder.transform([ticker])[0] \
                 if ticker in main_app.ticker_encoder.classes_ else 0
             ticker_codes = [[ticker_code] for _ in range(len(recent_df))]
-
+            title_lengths = [len(t) for t in recent_df["title"]]
+            num_words = [len(p.split()) for p in processed]
             vectors = hstack([
                 tfidf,
                 [[s] for s in sentiments],
                 [[sc] for sc in section_codes],
-                ticker_codes
+                ticker_codes,
+                [[tl] for tl in title_lengths],
+                [[nw] for nw in num_words]
             ])
 
             if vectors.shape[1] != main_app.multi_model.n_features_in_:
@@ -335,14 +369,40 @@ def prepare_vector(title: str, section: str, ticker: str):
 
     section_code = main_app.section_encoder.transform([section])[0] \
         if section in main_app.section_encoder.classes_ else 0
-
     ticker_code = main_app.ticker_encoder.transform([ticker])[0] \
         if ticker in main_app.ticker_encoder.classes_ else 0
 
-    return hstack([
-        main_app.vectorizer.transform([processed]),
-        [[sentiment]],
-        [[section_code]],
-        [[ticker_code]]
+    title_len = len(title)
+    num_words = len(processed.split())
+
+    tfidf_vector = main_app.vectorizer.transform([processed])
+    sentiment_vector = csr_matrix([[sentiment]])
+    section_vector = csr_matrix([[section_code]])
+    ticker_vector = csr_matrix([[ticker_code]])
+    title_len_vector = csr_matrix([[title_len]])
+    num_words_vector = csr_matrix([[num_words]])
+
+    vector = hstack([
+        tfidf_vector,
+        sentiment_vector,
+        section_vector,
+        ticker_vector,
+        title_len_vector,
+        num_words_vector
     ])
+
+    expected = main_app.multi_model.n_features_in_
+    actual = vector.shape[1]
+    print(f"[DEBUG] Вектор признаков: {actual}, ожидается: {expected}")
+
+    if actual != expected:
+        diff = expected - actual
+        print(f"[WARNING] Несоответствие размерности! Разница: {diff}")
+        if diff > 0:
+            vector = hstack([vector, csr_matrix((1, diff))])
+        else:
+            vector = vector[:, :expected]
+
+    return vector
+
 

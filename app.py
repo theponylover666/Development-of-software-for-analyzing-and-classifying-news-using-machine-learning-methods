@@ -6,7 +6,6 @@ from ml_models import LinearRegressionModel, ARIMAModel, SARIMAModel, KNNModel, 
 from text_preprocessor import TextPreprocessor
 import joblib
 
-# Трёхклассовая модель (объединённые классы)
 IMPACT_LABELS_RU = {
     "up": "Рост",
     "down": "Падение",

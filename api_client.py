@@ -44,8 +44,6 @@ class APIClient:
             meta_tag = soup.find("meta", {"property": "article:section"})
             if meta_tag and meta_tag.get("content"):
                 return meta_tag["content"]
-
-            # альтернатива: <aside class="textML"><a>...</a>
             aside = soup.find("aside", class_="textML")
             if aside:
                 a_tag = aside.find("a")
@@ -227,7 +225,6 @@ class APIClient:
 
         return pd.DataFrame(all_news)
 
-# ===== Тестовый main =====
 if __name__ == "__main__":
     client = APIClient()
     ticker = "SBER"
@@ -241,7 +238,7 @@ if __name__ == "__main__":
     else:
         print(f"Найдено {len(news)} новостей. Примеры:")
         for i, row in news.head(5).iterrows():
-            print(f"\n🗓 {row['date']}")
+            print(f"\n{row['date']}")
             print(f"Заголовок: {row['title']}")
             print(f"Раздел: {row.get('section', 'неизвестно')}")
             print(f"Ссылка: {row['url']}")

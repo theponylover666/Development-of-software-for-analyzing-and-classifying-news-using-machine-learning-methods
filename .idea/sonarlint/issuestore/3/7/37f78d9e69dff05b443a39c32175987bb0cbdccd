@@ -1,6 +1,7 @@
 
-tpython:S1192A"UDefine a constant instead of duplicating this literal "Ð½ÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð¾" 3 times.(¶µí„8ë€ªÐå2
-zpython:S117«"VRename this local variable "Model" to match the regular expression ^[_a-z][a-z0-9_]*$.(’ùÿöüÿÿÿÿ8çÚÁÐå2
-xpython:S3776u"TRefactor this function to reduce its Cognitive Complexity from 57 to the 15 allowed.(õí…êýÿÿÿÿ8Ð¬áÍå2
-]python:S112…">Replace this generic exception class with a more specific one.(­ý¸í8ƒÜ·Ðå2
-ipython:S3358²"IExtract this nested conditional expression into an independent statement.(‹æƒï8ƒÜ·Ðå2
+tpython:S1192P"UDefine a constant instead of duplicating this literal "Ð½ÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð¾" 3 times.(¶µí„8’ß•¬ê2
+upython:S117É"VRename this local variable "Model" to match the regular expression ^[_a-z][a-z0-9_]*$.(î¿ÀÒ8¯ðŽ­ê2
+ypython:S3776‚"TRefactor this function to reduce its Cognitive Complexity from 67 to the 15 allowed.(õí…êýÿÿÿÿ8“ß•¬ê2
+]python:S112">Replace this generic exception class with a more specific one.(ïµÝï8úÂ²³ê2
+]python:S112”">Replace this generic exception class with a more specific one.(­ý¸í8Ä ’³ê2
+ipython:S3358Ô"IExtract this nested conditional expression into an independent statement.(‹æƒï8¯ðŽ­ê2

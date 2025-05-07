@@ -1,12 +1,11 @@
-from datetime import datetime, timedelta
 import pandas as pd
-import os
 from api_client import APIClient
-from data_processor import DataProcessor
-import matplotlib.pyplot as plt
+from text_preprocessor import TextPreprocessor
+from tqdm import tqdm
+from datetime import timedelta
 
 def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
-                           window_days: int = 5, threshold: float = 0.5) -> pd.DataFrame:
+                           window_days: int = 3, threshold: float = 0.5) -> pd.DataFrame:
     stock_data = stock_data.copy()
     stock_data["TRADEDATE"] = pd.to_datetime(stock_data["TRADEDATE"])
     news_data["date"] = pd.to_datetime(news_data["date"])
@@ -20,23 +19,33 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
     labeled = []
     skipped_dates = 0
 
-    for _, news in news_data.iterrows():
-        news_date = news["date"].date()
+    preprocessor = TextPreprocessor()
+
+    for _, news in tqdm(news_data.iterrows(), total=news_data.shape[0], desc="Разметка новостей"):
+        base_date = news["date"].date()
         title = news["title"]
         section = news.get("section", "unknown")
 
-        if news_date not in available_dates:
-            skipped_dates += 1
-            continue
+        # Проверяем в окне D-1, D, D+1
+        found = False
+        for offset in [-1, 0, 1]:
+            news_date = base_date + timedelta(days=offset)
+            if news_date not in available_dates:
+                continue
+            base_row = stock_data[stock_data.index.date == news_date]
+            if base_row.empty:
+                continue
 
-        base_row = stock_data[stock_data.index.date == news_date]
-        if base_row.empty:
-            skipped_dates += 1
-            continue
-        base_price = base_row["CLOSE"].iloc[0]
+            base_price = base_row["CLOSE"].iloc[0]
+            future_data = stock_data[stock_data.index.date > news_date].iloc[:window_days]
+            if future_data.empty or len(future_data) < 2:
+                continue
 
-        future_data = stock_data[stock_data.index.date > news_date].iloc[:window_days]
-        if future_data.empty or len(future_data) < 2:
+            # Успешно нашли валидную дату
+            found = True
+            break
+
+        if not found:
             skipped_dates += 1
             continue
 
@@ -49,8 +58,8 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
         vol_change = (vol_future - vol_start) if pd.notna(vol_start) else 0
         label_volatility = 1 if vol_change > 0.01 else 0
 
-        trend_days = future_data["CLOSE"].diff().dropna()
-        trend_type = "uptrend" if all(trend_days > 0) else "downtrend" if all(trend_days < 0) else "none"
+        trend_score = (future_data["CLOSE"].diff() > 0).mean()
+        trend_type = "uptrend" if trend_score > 0.6 else "downtrend" if trend_score < 0.4 else "none"
 
         impact_type = []
         if trend_type in {"uptrend", "downtrend"}:
@@ -66,6 +75,12 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
         else:
             impact_class = "neutral_vol" if label_volatility else "neutral"
 
+        # Расчёт признаков
+        sentiment = preprocessor.analyze_sentiment(title)
+        processed_title = preprocessor.preprocess(title)
+        title_length = len(title)
+        num_words = len(processed_title.split())
+
         labeled.append({
             "date": news_date,
             "title": title,
@@ -73,60 +88,22 @@ def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
             "label_volatility": label_volatility,
             "impact_type": impact_type_str,
             "impact_class": impact_class,
-            "section": section
+            "section": section,
+            "sentiment": sentiment,
+            "title_len": title_length,
+            "num_words": num_words,
+            "clean_title": processed_title
         })
 
     df = pd.DataFrame(labeled)
     print(f"\nРазмечено новостей: {len(df)}")
-    print(f"Пропущено новостей (нет данных по дате или окну): {skipped_dates}")
+    print(f"Пропущено новостей: {skipped_dates}")
     print("\nРаспределение по классам:")
     print(df["impact_class"].value_counts())
 
-    # Визуализация
-    #df["impact_class"].value_counts().plot(kind="bar", title="Распределение классов")
-    #plt.xlabel("Класс")
-    #plt.ylabel("Количество")
-    #plt.tight_layout()
-    #plt.show()
-
     return df
 
-def build_dataset(ticker: str, start_date: str, end_date: str, threshold: float = 5.0):
-    """Создание размеченного датасета по одному тикеру."""
-    api = APIClient()
-    processor = DataProcessor()
-
-    stock_data = api.fetch_stock_data(ticker, start_date, end_date)
-    if stock_data.empty:
-        print("Не удалось получить данные по акциям.")
-        return
-
-    print("Данные по акциям загружены.")
-    significant_days = api.detect_significant_changes(stock_data, threshold)
-    if significant_days.empty:
-        print("Нет значительных изменений.")
-        return
-
-    print(f"Найдено {len(significant_days)} значительных дат.")
-    news_data = api.fetch_news_for_significant_days(ticker, stock_data, threshold)
-    if news_data.empty:
-        print("Новости не найдены.")
-        return
-
-    print(f"Собрано {len(news_data)} новостей.")
-    labeled = create_labeled_dataset(news_data, stock_data)
-    if labeled.empty:
-        print("Не удалось разметить новости.")
-        return
-
-    os.makedirs("data", exist_ok=True)
-    filename = f"data/labeled_news_{ticker}_{start_date}_to_{end_date}.csv"
-    labeled.to_csv(filename, index=False, encoding="utf-8-sig")
-    print(f"Размеченный датасет сохранён в {filename}")
-
-
-def build_and_merge_datasets(tickers, start_date, end_date, threshold=5.0):
-    """Создаёт и объединяет размеченные датасеты по всем тикерам."""
+def build_and_merge_datasets(tickers, start_date, end_date, threshold=0.5):
     all_datasets = []
     processed_dates = set()
 
@@ -169,7 +146,6 @@ def build_and_merge_datasets(tickers, start_date, end_date, threshold=5.0):
     else:
         print("Не удалось собрать ни одного датасета.")
 
-
 def main():
     tickers = [
         "SBER", "GAZP", "LKOH", "YNDX", "ROSN", "TATN", "VTBR", "MGNT", "NVTK",
@@ -181,7 +157,6 @@ def main():
     threshold = 0.5
 
     build_and_merge_datasets(tickers, start_date, end_date, threshold)
-
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
-
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, TimeSeriesSplit
 from xgboost import XGBRegressor
 
 from utils import add_features
@@ -42,6 +42,16 @@ class BaseModel:
         plt.gcf().autofmt_xdate()
         plt.tight_layout()
         return plt.gcf()
+
+    def tune_model(self, model, param_grid, randomized=False, n_iter=10):
+        tscv = TimeSeriesSplit(n_splits=5)
+        if randomized:
+            search = RandomizedSearchCV(model, param_grid, n_iter=n_iter, cv=tscv,
+                                        scoring="neg_mean_squared_error", random_state=42)
+        else:
+            search = GridSearchCV(model, param_grid, cv=tscv, scoring="neg_mean_squared_error")
+        search.fit(self.X, self.y)
+        return search.best_estimator_
 
 class LinearRegressionModel(BaseModel):
     def __init__(self, stock_data: pd.DataFrame, day_offset=0):
@@ -168,10 +178,31 @@ class SARIMAModel(BaseModel):
             print(f"SARIMA: ошибка — {e}")
             return None if not return_data else []
 
-class SVRModel(LinearRegressionModel):
-    def forecast(self, forecast_days: int = 10, return_data=False):
-        model = SVR(kernel='rbf', C=100, gamma=0.1, epsilon=0.1)
-        model.fit(self.X, self.y)
+class SVRModel(BaseModel):
+    def __init__(self, stock_data: pd.DataFrame, day_offset=0):
+        self.stock_data = stock_data.copy()
+        self.day_offset = day_offset
+
+        self.stock_data["TRADEDATE"] = pd.to_datetime(self.stock_data["TRADEDATE"])
+        self.stock_data.drop_duplicates(subset="TRADEDATE", keep="last", inplace=True)
+        self.stock_data.set_index("TRADEDATE", inplace=True)
+        self.stock_data = self.stock_data.asfreq("B")
+        self.stock_data["CLOSE"] = self.stock_data["CLOSE"].ffill()
+
+        self.stock_data = add_features(self.stock_data)
+        self.X = self.stock_data[["MA3", "MA5", "EMA10", "STD_5", "RETURN"]]
+        self.y = self.stock_data["CLOSE"]
+    def forecast(self, forecast_days: int = 10, return_data=False, tune=False):
+        if tune:
+            param_grid = {
+                "C": [1, 10, 100],
+                "gamma": [0.01, 0.1, 1],
+                "epsilon": [0.01, 0.1, 0.5]
+            }
+            model = self.tune_model(SVR(kernel='rbf'), param_grid)
+        else:
+            model = SVR(kernel='rbf', C=100, gamma=0.1, epsilon=0.1)
+            model.fit(self.X, self.y)
 
         preds = []
         df = self.stock_data.copy()
@@ -193,7 +224,8 @@ class SVRModel(LinearRegressionModel):
         if return_data:
             return [{"date": str(date.date()), "value": float(val)} for date, val in zip(forecast_index, preds)]
         else:
-            return self.visualize(self.y, preds, forecast_index, title="SVR с признаками")
+            return self.visualize(self.y, preds, forecast_index,
+                                  title="Прогноз SVR (с гиперпараметрами)" if tune else "Прогноз SVR")
 
 class KNNModel(SVRModel):
     def forecast(self, forecast_days: int = 10, return_data=False):
@@ -220,12 +252,35 @@ class KNNModel(SVRModel):
         if return_data:
             return [{"date": str(date.date()), "value": float(val)} for date, val in zip(forecast_index, preds)]
         else:
-            return self.visualize(self.y, preds, forecast_index, title="KNN с признаками")
+            return self.visualize(self.y, preds, forecast_index, title="Прогноз KNN")
 
-class XGBoostModel(SVRModel):
-    def forecast(self, forecast_days: int = 10, return_data=False):
-        model = XGBRegressor(n_estimators=100, max_depth=4, learning_rate=0.1, random_state=42)
-        model.fit(self.X, self.y)
+class XGBoostModel(BaseModel):
+    def __init__(self, stock_data: pd.DataFrame, day_offset=0):
+        self.stock_data = stock_data.copy()
+        self.day_offset = day_offset
+
+        self.stock_data["TRADEDATE"] = pd.to_datetime(self.stock_data["TRADEDATE"])
+        self.stock_data.drop_duplicates(subset="TRADEDATE", keep="last", inplace=True)
+        self.stock_data.set_index("TRADEDATE", inplace=True)
+        self.stock_data = self.stock_data.asfreq("B")
+        self.stock_data["CLOSE"] = self.stock_data["CLOSE"].ffill()
+
+        self.stock_data = add_features(self.stock_data)
+        self.X = self.stock_data[["MA3", "MA5", "EMA10", "STD_5", "RETURN"]]
+        self.y = self.stock_data["CLOSE"]
+    def forecast(self, forecast_days: int = 10, return_data=False, tune=False):
+        if tune:
+            param_grid = {
+                "n_estimators": [50, 100, 150],
+                "max_depth": [3, 4, 5],
+                "learning_rate": [0.01, 0.05, 0.1],
+                "subsample": [0.7, 1],
+                "colsample_bytree": [0.7, 1]
+            }
+            model = self.tune_model(XGBRegressor(random_state=42), param_grid, randomized=True, n_iter=10)
+        else:
+            model = XGBRegressor(n_estimators=100, max_depth=4, learning_rate=0.1, random_state=42)
+            model.fit(self.X, self.y)
 
         preds = []
         df = self.stock_data.copy()
@@ -247,4 +302,6 @@ class XGBoostModel(SVRModel):
         if return_data:
             return [{"date": str(date.date()), "value": float(val)} for date, val in zip(forecast_index, preds)]
         else:
-            return self.visualize(self.y, preds, forecast_index, title="XGBoost")
+            return self.visualize(self.y, preds, forecast_index,
+                                  title="Прогноз XGBoost (с гиперпараметрами)" if tune else "Прогноз XGBoost")
+
