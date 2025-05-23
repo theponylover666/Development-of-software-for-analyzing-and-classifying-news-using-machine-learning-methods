@@ -737,3 +737,7 @@ Q.idea/sonarlint/securityhotspotstore/5/1/51137bd7c4be9a3d369a31dc4a0fafb1c43411
 Q.idea/sonarlint/securityhotspotstore/5/0/504bf7099c848b6be72a3743ba9c6ad58b51d0db,5\d\5dcc606b5cbcb409851ff94772e18a08caa13490
 w
 G.idea/sonarlint/issuestore/8/2/8200d1e698038f16d8dcc7528e4561262d2a4eaf,d\7\d75fc3c6e98803387f5a3419adf5eb77e230ff5e
+L
+models/news_model_multi.json,4\3\434df1cedb58fc6471065e54d975be60d107baa3
+>
+add_down_up.py,9\6\9632f2ae2bcdb473733cc5751d33b1cd70d9e4bf

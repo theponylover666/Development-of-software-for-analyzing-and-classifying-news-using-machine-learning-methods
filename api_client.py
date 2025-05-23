@@ -40,7 +40,6 @@ class APIClient:
             response.encoding = "windows-1251"
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # meta-тег с категорией
             meta_tag = soup.find("meta", {"property": "article:section"})
             if meta_tag and meta_tag.get("content"):
                 return meta_tag["content"]

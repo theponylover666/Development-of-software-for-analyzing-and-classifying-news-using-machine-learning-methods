@@ -5,6 +5,7 @@ from data_processor import DataProcessor
 from ml_models import LinearRegressionModel, ARIMAModel, SARIMAModel, KNNModel, SVRModel
 from text_preprocessor import TextPreprocessor
 import joblib
+from xgboost import XGBClassifier
 
 IMPACT_LABELS_RU = {
     "up": "Рост",
@@ -16,7 +17,8 @@ class MainApp:
     def __init__(self):
         self.api_client = APIClient()
         self.data_processor = DataProcessor()
-        self.multi_model = joblib.load("models/news_model_multi.pkl")
+        self.multi_model = XGBClassifier()
+        self.multi_model.load_model("models/news_model_multi.json")
         self.vectorizer = joblib.load("models/news_vectorizer.pkl")
         self.section_encoder = joblib.load("models/news_section_encoder.pkl")
         self.label_encoder = joblib.load("models/news_label_encoder.pkl")
@@ -74,14 +76,21 @@ class MainApp:
             title = row["title"]
             url = row["url"]
             processed = self.text_preprocessor.preprocess(title)
-            sentiment = TextPreprocessor.analyze_sentiment(title)
+            sentiment = self.text_preprocessor.analyze_sentiment(title)
             section = row.get("section", "unknown")
             section_code = self.section_encoder.transform([section])[0] if section in self.section_encoder.classes_ else 0
+
+            ticker = row.get("ticker", "unknown")
+            ticker_code = self.ticker_encoder.transform([ticker])[0] if ticker in self.ticker_encoder.classes_ else 0
+            title_len = len(title)
+            num_words = len(processed.split())
 
             vector = hstack([
                 self.vectorizer.transform([processed]),
                 [[sentiment]],
-                [[section_code]]
+                [[title_len, num_words]],
+                [[section_code]],
+                [[ticker_code]]
             ])
 
             pred_encoded = self.multi_model.predict(vector)[0]
@@ -129,10 +138,17 @@ class MainApp:
         section_codes = self.section_encoder.transform(sections)
 
         tfidf_vectors = self.vectorizer.transform(processed_titles)
+        title_lens = [len(title) for title in news_data["title"]]
+        num_words = [len(p.split()) for p in processed_titles]
+        tickers = news_data.get("ticker", "unknown").fillna("unknown")
+        ticker_codes = self.ticker_encoder.transform(tickers)
+
         vectors = hstack([
             tfidf_vectors,
             [[s] for s in sentiments],
-            [[sc] for sc in section_codes]
+            [[tl, nw] for tl, nw in zip(title_lens, num_words)],
+            [[sc] for sc in section_codes],
+            [[tc] for tc in ticker_codes]
         ])
 
         preds_encoded = self.multi_model.predict(vectors)
@@ -164,3 +180,22 @@ class MainApp:
         else:
             print("Новостной фон нейтральный.")
         return results
+
+    def test_manual_prediction(self, title, section="Экономика", ticker="SBER"):
+        processed = self.text_preprocessor.preprocess(title)
+        sentiment = self.text_preprocessor.analyze_sentiment(title)
+        section_code = self.section_encoder.transform([section])[0] if section in self.section_encoder.classes_ else 0
+        ticker_code = self.ticker_encoder.transform([ticker])[0] if ticker in self.ticker_encoder.classes_ else 0
+        title_len = len(title)
+        num_words = len(processed.split())
+
+        vector = hstack([
+            self.vectorizer.transform([processed]),
+            [[sentiment]],
+            [[title_len, num_words]],
+            [[section_code]],
+            [[ticker_code]]
+        ])
+        pred_encoded = self.multi_model.predict(vector)[0]
+        label = self.label_encoder.inverse_transform([pred_encoded])[0]
+        print(f"'{title}' → {IMPACT_LABELS_RU.get(label, label)}")

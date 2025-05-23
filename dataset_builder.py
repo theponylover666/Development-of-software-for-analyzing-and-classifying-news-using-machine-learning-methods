@@ -5,7 +5,7 @@ from tqdm import tqdm
 from datetime import timedelta
 
 def create_labeled_dataset(news_data: pd.DataFrame, stock_data: pd.DataFrame,
-                           window_days: int = 3, threshold: float = 0.5) -> pd.DataFrame:
+                           window_days: int = 3, threshold: float = 2.0) -> pd.DataFrame:
     stock_data = stock_data.copy()
     stock_data["TRADEDATE"] = pd.to_datetime(stock_data["TRADEDATE"])
     news_data["date"] = pd.to_datetime(news_data["date"])
@@ -154,7 +154,7 @@ def main():
     ]
     start_date = "2021-01-01"
     end_date = "2025-04-01"
-    threshold = 0.5
+    threshold = 2.0
 
     build_and_merge_datasets(tickers, start_date, end_date, threshold)
 

@@ -376,19 +376,17 @@ def prepare_vector(title: str, section: str, ticker: str):
     num_words = len(processed.split())
 
     tfidf_vector = main_app.vectorizer.transform([processed])
-    sentiment_vector = csr_matrix([[sentiment]])
-    section_vector = csr_matrix([[section_code]])
-    ticker_vector = csr_matrix([[ticker_code]])
-    title_len_vector = csr_matrix([[title_len]])
-    num_words_vector = csr_matrix([[num_words]])
+    sentiment_vector = [[sentiment]]
+    len_vector = [[title_len, num_words]]
+    section_vector = [[section_code]]
+    ticker_vector = [[ticker_code]]
 
     vector = hstack([
         tfidf_vector,
         sentiment_vector,
+        len_vector,
         section_vector,
-        ticker_vector,
-        title_len_vector,
-        num_words_vector
+        ticker_vector
     ])
 
     expected = main_app.multi_model.n_features_in_
@@ -399,10 +397,9 @@ def prepare_vector(title: str, section: str, ticker: str):
         diff = expected - actual
         print(f"[WARNING] Несоответствие размерности! Разница: {diff}")
         if diff > 0:
+            from scipy.sparse import csr_matrix
             vector = hstack([vector, csr_matrix((1, diff))])
         else:
             vector = vector[:, :expected]
 
     return vector
-
-

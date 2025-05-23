@@ -1,6 +1,5 @@
 import os
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -8,7 +7,7 @@ from sklearn.metrics import classification_report, accuracy_score, f1_score
 from scipy.sparse import hstack
 from imblearn.over_sampling import RandomOverSampler
 from xgboost import XGBClassifier
-from text_preprocessor import TFIDFVectorizer, TextPreprocessor
+from text_preprocessor import TFIDFVectorizer
 
 def simplify_class(label: str) -> str:
     if label.startswith("up"):
@@ -39,9 +38,11 @@ def main():
     df = df[df["num_words"] > 2]
 
     print(f"После фильтрации: {len(df)} новостей")
+    print("\nРаспределение по упрощённым меткам:")
+    print(df["impact_class_simple"].value_counts())
 
     # === Признаки
-    print("TF-IDF векторизация...")
+    print("\nTF-IDF векторизация...")
     vectorizer = TFIDFVectorizer()
     X_text = vectorizer.fit_transform(df["clean_title"])
 
@@ -67,12 +68,12 @@ def main():
         X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
     )
 
-    print("Балансировка классов...")
+    print("\nБалансировка классов...")
     ros = RandomOverSampler(random_state=42)
     X_train, y_train = ros.fit_resample(X_train, y_train)
 
     # === Обучение
-    print("Обучение XGBoostClassifier...")
+    print("\nОбучение XGBoostClassifier...")
     model = XGBClassifier(
         n_estimators=150,
         max_depth=6,
@@ -92,15 +93,28 @@ def main():
     print(f"F1 Macro: {f1_score(y_test, y_pred, average='macro'):.3f}")
     print(classification_report(y_test, y_pred, target_names=label_encoder.classes_))
 
-    # === Сохранение
+    # === Очистка старых файлов и сохранение
+    print("\nСохраняем модель и кодировщики...")
     os.makedirs("models", exist_ok=True)
-    joblib.dump(model, "models/news_model_multi.pkl")
+
+    for fname in [
+        "news_model_multi.pkl",
+        "news_vectorizer.pkl",
+        "news_label_encoder.pkl",
+        "news_section_encoder.pkl",
+        "news_ticker_encoder.pkl"
+    ]:
+        path = os.path.join("models", fname)
+        if os.path.exists(path):
+            os.remove(path)
+
+    model.save_model("models/news_model_multi.json")
     joblib.dump(vectorizer.vectorizer, "models/news_vectorizer.pkl")
     joblib.dump(label_encoder, "models/news_label_encoder.pkl")
     joblib.dump(section_encoder, "models/news_section_encoder.pkl")
     joblib.dump(ticker_encoder, "models/news_ticker_encoder.pkl")
 
-    print("\nМодель и кодировщики успешно сохранены!")
+    print("✅ Модель и кодировщики успешно сохранены!")
 
 if __name__ == "__main__":
     main()
