@@ -7,6 +7,7 @@ from text_preprocessor import TextPreprocessor
 import joblib
 from xgboost import XGBClassifier
 
+# Отображение меток на русском языке
 IMPACT_LABELS_RU = {
     "up": "Рост",
     "down": "Падение",
@@ -15,19 +16,22 @@ IMPACT_LABELS_RU = {
 
 class MainApp:
     def __init__(self):
+        # Инициализация компонентов и загрузка моделей
         self.api_client = APIClient()
         self.data_processor = DataProcessor()
+        self.text_preprocessor = TextPreprocessor()
         self.multi_model = XGBClassifier()
         self.multi_model.load_model("models/news_model_multi.json")
+
         self.vectorizer = joblib.load("models/news_vectorizer.pkl")
         self.section_encoder = joblib.load("models/news_section_encoder.pkl")
         self.label_encoder = joblib.load("models/news_label_encoder.pkl")
         self.ticker_encoder = joblib.load("models/news_ticker_encoder.pkl")
-        self.text_preprocessor = TextPreprocessor()
 
     def run(self, ticker, from_date, to_date, output_file, threshold=5.0, forecast_days=10):
-        print(f"\nЗапуск анализа для {ticker}...")
-
+        """
+        Основной метод запуска анализа: акции, новости, прогнозирование.
+        """
         stock_data = self.get_and_analyze_stock_data(ticker, from_date, to_date, output_file)
         if stock_data is None:
             return
@@ -40,55 +44,43 @@ class MainApp:
         self.analyze_recent_news(ticker)
         self.run_forecasting_models(ticker, stock_data, forecast_days)
 
-        print(f"\nАнализ {ticker} завершен!")
-
     def get_and_analyze_stock_data(self, ticker, from_date, to_date, output_file):
+        """
+        Получение и базовый анализ данных по акциям.
+        """
         stock_data = self.api_client.fetch_stock_data(ticker, from_date, to_date)
-        if stock_data is not None and not stock_data.empty:
-            self.data_processor.save_to_csv(stock_data, output_file)
-
-            print(f"\nКраткий анализ цен для {ticker}:")
-            self.data_processor.analyze_prices(stock_data, ticker)
-
-            print("\nВизуализация: скользящие средние")
-            self.data_processor.calculate_moving_averages(stock_data, ticker)
-
-            print("\nВизуализация: волатильность")
-            self.data_processor.calculate_volatility(stock_data, ticker)
-
-            print("\nВизуализация: дневная доходность")
-            self.data_processor.calculate_daily_returns(stock_data, ticker)
-
-            return stock_data
-        else:
+        if stock_data is None or stock_data.empty:
             print("Ошибка: данные по акциям не получены.")
             return None
 
-    def classify_and_print_news(self, news_data):
-        if news_data.empty:
-            print("Нет новостей, связанных со значительными изменениями.")
-            return
+        self.data_processor.save_to_csv(stock_data, output_file)
+        self.data_processor.analyze_prices(stock_data, ticker)
+        self.data_processor.calculate_moving_averages(stock_data, ticker)
+        self.data_processor.calculate_volatility(stock_data, ticker)
+        self.data_processor.calculate_daily_returns(stock_data, ticker)
+        return stock_data
 
-        unique_days = news_data["date"].nunique()
-        print(f"\nНайдено {len(news_data)} новостей по {unique_days} значимым дням:")
+    def classify_and_print_news(self, news_data):
+        """
+        Классификация новостей и вывод в консоль.
+        """
+        if news_data.empty:
+            return
 
         for _, row in news_data.iterrows():
             title = row["title"]
-            url = row["url"]
+            section = row.get("section", "unknown")
+            ticker = row.get("ticker", "unknown")
+
             processed = self.text_preprocessor.preprocess(title)
             sentiment = self.text_preprocessor.analyze_sentiment(title)
-            section = row.get("section", "unknown")
             section_code = self.section_encoder.transform([section])[0] if section in self.section_encoder.classes_ else 0
-
-            ticker = row.get("ticker", "unknown")
             ticker_code = self.ticker_encoder.transform([ticker])[0] if ticker in self.ticker_encoder.classes_ else 0
-            title_len = len(title)
-            num_words = len(processed.split())
 
             vector = hstack([
                 self.vectorizer.transform([processed]),
                 [[sentiment]],
-                [[title_len, num_words]],
+                [[len(title), len(processed.split())]],
                 [[section_code]],
                 [[ticker_code]]
             ])
@@ -98,11 +90,12 @@ class MainApp:
             label = IMPACT_LABELS_RU.get(pred_label, pred_label)
 
             print(f"{row['date']} | {title} [{label}] [{section}]")
-            print(f"   → {url}")
+            print(f"   → {row['url']}")
 
     def run_forecasting_models(self, ticker, stock_data, forecast_days):
-        print(f"\nПрогнозирование цен для {ticker} на {forecast_days} дней:")
-
+        """
+        Запуск моделей прогнозирования цен акций.
+        """
         for name, model_class in [
             ("Линейная регрессия", LinearRegressionModel),
             ("SVR", SVRModel),
@@ -113,32 +106,30 @@ class MainApp:
             print(f"\n{name}:")
             model = model_class(stock_data)
             if name == "ARIMA":
-                forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days)
+                model.forecast(order=(1, 1, 1), forecast_days=forecast_days)
             elif name == "SARIMA":
-                forecast = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days)
+                model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), forecast_days=forecast_days)
             else:
-                forecast = model.forecast(forecast_days)
-            print(forecast)
+                model.forecast(forecast_days)
 
     def analyze_recent_news(self, ticker, days=7):
-        print(f"\nАнализ новостного фона за последние {days} дней для {ticker}:")
-
+        """
+        Анализ и классификация новостей за последние N дней.
+        """
         end_date = datetime.today().date()
         start_date = end_date - timedelta(days=days)
 
         news_data = self.api_client.fetch_news_from_interfax_range(ticker, start_date, end_date)
         if news_data.empty:
-            print("Нет новостей за указанный период.")
             return []
 
         processed_titles = [self.text_preprocessor.preprocess(t) for t in news_data["title"]]
         sentiments = [TextPreprocessor.analyze_sentiment(t) for t in news_data["title"]]
         sections = news_data.get("section", "unknown").fillna("unknown")
-
         section_codes = self.section_encoder.transform(sections)
 
         tfidf_vectors = self.vectorizer.transform(processed_titles)
-        title_lens = [len(title) for title in news_data["title"]]
+        title_lens = [len(t) for t in news_data["title"]]
         num_words = [len(p.split()) for p in processed_titles]
         tickers = news_data.get("ticker", "unknown").fillna("unknown")
         ticker_codes = self.ticker_encoder.transform(tickers)
@@ -153,9 +144,7 @@ class MainApp:
 
         preds_encoded = self.multi_model.predict(vectors)
         preds_labels = self.label_encoder.inverse_transform(preds_encoded)
-
         news_data["prediction"] = preds_labels
-        print(f"\nНайдено {len(news_data)} новостей за последние {days} дней:")
 
         results = []
         for _, row in news_data.iterrows():
@@ -169,33 +158,25 @@ class MainApp:
                 "label": label
             })
 
-        count_up = sum(row["label"] == "Рост" for row in results)
-        count_down = sum(row["label"] == "Падение" for row in results)
-
-        print(f"\nИтог: Рост: {count_up} | Падение: {count_down}")
-        if count_up > count_down:
-            print("Новостной фон положительный — возможен рост.")
-        elif count_down > count_up:
-            print("Новостной фон отрицательный — возможна просадка.")
-        else:
-            print("Новостной фон нейтральный.")
         return results
 
     def test_manual_prediction(self, title, section="Экономика", ticker="SBER"):
+        """
+        Ручной тест классификации новости по заголовку.
+        """
         processed = self.text_preprocessor.preprocess(title)
         sentiment = self.text_preprocessor.analyze_sentiment(title)
         section_code = self.section_encoder.transform([section])[0] if section in self.section_encoder.classes_ else 0
         ticker_code = self.ticker_encoder.transform([ticker])[0] if ticker in self.ticker_encoder.classes_ else 0
-        title_len = len(title)
-        num_words = len(processed.split())
 
         vector = hstack([
             self.vectorizer.transform([processed]),
             [[sentiment]],
-            [[title_len, num_words]],
+            [[len(title), len(processed.split())]],
             [[section_code]],
             [[ticker_code]]
         ])
+
         pred_encoded = self.multi_model.predict(vector)[0]
         label = self.label_encoder.inverse_transform([pred_encoded])[0]
         print(f"'{title}' → {IMPACT_LABELS_RU.get(label, label)}")

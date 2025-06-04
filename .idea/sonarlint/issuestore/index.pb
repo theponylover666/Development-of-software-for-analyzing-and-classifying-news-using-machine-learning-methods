@@ -626,8 +626,6 @@ c
 c
 3data/labeled_news_PHOR_2021-01-01_to_2025-04-01.csv,6\c\6cf104c8dbf3821f78348127091f8867d1fbd091
 c
-3data/labeled_news_AFKS_2021-01-01_to_2025-04-01.csv,8\1\81d0ff7f8fc03bfeca023efc04ac474ca43c3cc7
-c
 3data/labeled_news_IRAO_2021-01-01_to_2025-04-01.csv,6\0\60a04478b15fa6001b5a217554e3e51020823f88
 c
 3data/labeled_news_RUAL_2021-01-01_to_2025-04-01.csv,9\d\9d4f3e75b33a18e86b3a7059e8d9079e521e5571
@@ -645,8 +643,6 @@ H
 data/SBER_stock_data.csv,a\e\ae9787e07fcad185c29681f548c0addd7e9b02b5
 w
 G.idea/sonarlint/issuestore/3/0/30765c4ea736b381b46b938ebd7f97ed0565c3b5,9\6\96dd75cadfb01eff9d2943507325c7dbe946fd08
-w
-G.idea/sonarlint/issuestore/8/1/81d0ff7f8fc03bfeca023efc04ac474ca43c3cc7,5\8\58608016d7f94e001783d732498870bd318ad8ab
 w
 G.idea/sonarlint/issuestore/8/a/8a2f1c186bcf099241423ede763d7dd4f834abf3,1\7\176e51f0bf25064c40d570ab765687d5051d1ccd
 
@@ -704,8 +700,6 @@ Q.idea/sonarlint/securityhotspotstore/a/4/a4cbd620382d8ee7972e6faf7914ede4e9d274
 
 Q.idea/sonarlint/securityhotspotstore/e/d/ed0c5b91c445f526ed4c086a021a34129743d0ff,3\4\34c0238b952623c6b002f275c668bd5771b879d3
 
-Q.idea/sonarlint/securityhotspotstore/8/1/81d0ff7f8fc03bfeca023efc04ac474ca43c3cc7,4\6\468e25db4aa9376ac0577d699a8427f3f73a180b
-
 Q.idea/sonarlint/securityhotspotstore/8/a/8a2f1c186bcf099241423ede763d7dd4f834abf3,2\0\20abe0a37842dd613a9d746e1370cba82c088c73
 w
 G.idea/sonarlint/issuestore/b/1/b19e0ddfdd6a74445ca847ce99d3b921b98115da,3\1\317349e632c7f7f83b9bf5a66291444aa0e90150
@@ -741,3 +735,6 @@ L
 models/news_model_multi.json,4\3\434df1cedb58fc6471065e54d975be60d107baa3
 >
 add_down_up.py,9\6\9632f2ae2bcdb473733cc5751d33b1cd70d9e4bf
+:
+
+run_all.py,6\c\6c227548454213a07be21a84c004df4e395aaff3

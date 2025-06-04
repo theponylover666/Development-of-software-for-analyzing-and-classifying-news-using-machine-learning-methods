@@ -4,6 +4,7 @@ from typing import List, Dict
 from datetime import datetime, timedelta
 from scipy.sparse import hstack, csr_matrix
 import matplotlib.pyplot as plt
+from pandas.tseries.offsets import MonthBegin, MonthEnd
 import uuid
 import os
 import shutil
@@ -32,7 +33,7 @@ COMPANY_TO_TICKER = {
     "Аэрофлот": "AFLT"
 }
 
-def plot_forecast(ts, forecast_values, forecast_index, title="", ground_truth=None):
+def plot_forecast(ts, forecast_values, forecast_index, title="", ground_truth=None, significant_points=None):
     import matplotlib.dates as mdates
 
     plt.figure(figsize=(12, 6))
@@ -43,11 +44,15 @@ def plot_forecast(ts, forecast_values, forecast_index, title="", ground_truth=No
     plt.plot(ts_index, ts.values, label="Исторические данные", color="blue", alpha=0.6)
     plt.plot(forecast_index, forecast_values, label="Прогноз", color="red", linestyle="--", marker="x")
 
+    # Фактические значения
     if ground_truth is not None:
         ground_truth = ground_truth[:len(forecast_values)]
         plt.plot(forecast_index, ground_truth.values, label="Фактические данные",
                  color="green", linestyle=":", marker="o")
-
+    if significant_points is not None:
+        sig_dates = pd.to_datetime(significant_points)
+        sig_prices = ts.loc[ts.index.isin(sig_dates)]
+        plt.scatter(sig_prices.index, sig_prices.values, color="red", label="Сильные изменения", s=70, zorder=5)
     # Вертикальная линия конца тренировочных данных
     if len(ts_index) > 0:
         plt.axvline(ts_index[-1], color="gray", linestyle="--", alpha=0.5)
@@ -159,18 +164,26 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
             log(f"Режим: валидация. Обучение на {len(train_data)} днях, тест — {len(test_data)} дней.")
 
         elif req.mode == "monthly":
+            stock_data["TRADEDATE"] = pd.to_datetime(stock_data["TRADEDATE"])
+            stock_data = stock_data.sort_values("TRADEDATE").copy()
+            stock_data = stock_data.drop_duplicates(subset="TRADEDATE", keep="last")
             stock_data.set_index("TRADEDATE", inplace=True)
             stock_data = stock_data.asfreq("B")
             stock_data["CLOSE"] = stock_data["CLOSE"].ffill()
 
-            last_month = stock_data.index.max().to_period("M")
-            train_data = stock_data[stock_data.index.to_period("M") < last_month].copy().reset_index()
-            test_data = stock_data[stock_data.index.to_period("M") == last_month].copy().reset_index()
+            last_date = stock_data.index.max()
+            next_month_start = (last_date + MonthBegin(1)).replace(day=1)
+            next_month_end = next_month_start + MonthEnd(1)
+            forecast_index = pd.bdate_range(next_month_start, next_month_end)
+            forecast_days = len(forecast_index)
 
-            forecast_days = len(test_data)
-            test_index = pd.to_datetime(test_data["TRADEDATE"])
-            day_offset = train_data.shape[0]
-            log(f"Режим: по месяцу. Обучение на {len(train_data)} точках, тест на {len(test_data)} дней ({last_month})")
+            train_data = stock_data.copy().reset_index()
+            test_data = None
+            test_index = forecast_index
+            day_offset = len(train_data)
+
+            stock_data = train_data.copy()  # для detect_significant_changes
+            log(f"Режим: по месяцу. Прогнозируем {forecast_days} дней: {next_month_start.date()} — {next_month_end.date()}")
 
         else:
             train_data, test_data = stock_data.copy(), None
@@ -189,7 +202,8 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
         )
 
         ts = pd.Series(train_data["CLOSE"].values, index=pd.to_datetime(train_data["TRADEDATE"]))
-
+        significant = main_app.api_client.detect_significant_changes(stock_data, req.threshold)
+        significant_dates = pd.to_datetime(significant["TRADEDATE"]).tolist() if not significant.empty else []
         def save_plot(fig, name):
             path = f"{TEMP_DIR}/{name}_{uuid.uuid4().hex[:8]}.png"
             fig.savefig(path)
@@ -204,7 +218,7 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
         ]:
             model = Model(train_data) if name in {"arima", "sarima"} else Model(train_data, day_offset=day_offset)
 
-            if req.mode in {"validate", "monthly"}:
+            if req.mode == "validate":
                 test_ts = pd.Series(test_data["CLOSE"].values, index=pd.to_datetime(test_data["TRADEDATE"]))
                 test_ts = test_ts[~test_ts.index.duplicated(keep='last')]
                 if name == "arima":
@@ -245,7 +259,33 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
                     forecast_values,
                     forecast_index[:len(forecast_values)],
                     title = f"{name.upper()} ({mode_label})",
-                    ground_truth=test_ts
+                    ground_truth=test_ts,
+                    significant_points=significant_dates
+
+                )
+            elif req.mode == "monthly":
+                if name == "arima":
+                    forecast = model.forecast(order=(1, 1, 1), forecast_days=forecast_days, return_data=True)
+                    forecast_values = [point["value"] for point in forecast]
+                elif name == "sarima":
+                    forecast = model.forecast(order=(1, 1, 1), seasonal_order=(1, 1, 1, 12),
+                                              forecast_days=forecast_days, return_data=True)
+                    forecast_values = [point["value"] for point in forecast]
+                else:
+                    tune = name in {"svr", "xgb"}
+                    if tune:
+                        forecast_data = model.forecast(forecast_days=forecast_days, return_data=True, tune=True)
+                    else:
+                        forecast_data = model.forecast(forecast_days=forecast_days, return_data=True)
+                    forecast_values = [point["value"] for point in forecast_data]
+
+                fig = plot_forecast(
+                    ts,
+                    forecast_values,
+                    forecast_index[:len(forecast_values)],
+                    title=f"{name.upper()} ({mode_label})",
+                    ground_truth=None,
+                    significant_points=significant_dates
                 )
             else:
                 if name == "arima":
@@ -270,6 +310,7 @@ def run_analysis(task_id: str, ticker: str, req: AnalyzeRequest):
 
         stock_data = stock_data.reset_index()
         significant = main_app.api_client.detect_significant_changes(stock_data, req.threshold)
+        significant_dates = pd.to_datetime(significant["TRADEDATE"]).tolist() if not significant.empty else []
         log(f"\nНайдено {len(significant)} значительных изменений.")
         news_df = main_app.api_client.fetch_news_for_significant_days(ticker, stock_data, req.threshold)
         log(f"Итог: Найдено {len(news_df)} новостей для {len(significant)} значимых дней.")
